@@ -40,8 +40,8 @@ All content is organized into a structured directory hierarchy for easy browsing
 1. Clone this repository or download the source code:
 
 ```bash
-git clone https://github.com/yourusername/civitai-downloader.git
-cd civitai-downloader
+git clone https://github.com/madlaxcb/CivitAI-Collection-Downloader
+cd CivitAI-Collection-Downloader
 ```
 
 2. Install the required dependencies:
