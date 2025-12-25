@@ -1,12 +1,20 @@
-# CivitAI Downloader
+# CivitAI Collection Downloader v1.1.0
 
-A Python tool for downloading media (images and videos) and metadata from CivitAI collections and posts.
+The original project is a Python tool designed to download media (images and videos) and metadata from CivitAI collections and posts.
 
-This is the result of substantially more troubleshooting than I would like to admit, and a long series of "educational experiences" along the path to get here. I provide this with no warrenty, no maintainance and no promise of help should CivitAI break it tomorrow. It worked for me, on my system, downloading several thousand images in one go, as well as a few videos.
+This tool came into existence after extensive debugging and "learning experiences." I provide it as-is, with no guarantees, maintenance, or commitments. If CivitAI breaks it tomorrow, I won’t be offering any assistance. That said, it works well on my system and has successfully downloaded thousands of images and a few videos.
 
-Post functionality is entirely untested, but given the rest of my disclaimers. If I run into situation where this doesn't work, or someone else does, and posts a solution or pull request, I will approve it, but quite frankly, I used this to grab the stuff that I needed and may not have use for it again.
+The post functionality is completely untested, but as mentioned above, if anyone encounters issues and submits a fix or a pull request, I’ll approve it. However, to be honest, I’ve already used this tool to download the content I needed and may not use it again.
 
-A large portion of the code was generated with Claude Sonnet 3.7, mostly that to do with actually interfacing with the API
+Most of the original code was generated using Claude Sonnet 3.7.
+
+This is a modified version based on the original CivitAI Downloader. It builds upon the original project’s GUI and adds some new features. This version was developed using Antigravity and Gemini 3.
+
+## To-do:
+
+1. Package the files after download.
+
+2. Enable downloading content from a user’s albums or videos (e.g., https://civitai.com/user/username/images or https://civitai.com/user/username/videos).
 
 ## Overview
 
@@ -23,6 +31,8 @@ All content is organized into a structured directory hierarchy for easy browsing
 
 - **Collection and Post Support**: Download from individual CivitAI collections and posts, or process multiple IDs in a single run
 - **Complete Metadata**: Automatically retrieves and saves generation prompts, models used, tags, and other details
+- **Proxy Support**: Support for HTTP and SOCKS5 proxies containing authentication
+- **Post-Download Actions**: Automatically close, shutdown, sleep or hibernate after download completes
 - **Reliable Downloads**: Built-in retry logic for handling network errors and interruptions
 - **Flexible Configuration**: Customizable download locations and behavior
 - **Dry Run Mode**: Preview what would be downloaded without actually downloading files
@@ -54,10 +64,16 @@ pip install requests pyyaml
 
 On first run, the application will prompt you for:
 
-1. Your CivitAI API key (required for accessing some portions of the the CivitAI API, like private collections)
+1. Your CivitAI API key
 2. A download directory (defaults to `~/Pictures/CivitAI`)
+3. Proxy settings (HTTP/SOCKS5) if required
+4. Post-download actions (System shutdown, sleep, etc.)
 
-These settings are saved to a configuration file at `~/.civitai_downloader/config.json` for future use.
+These settings are saved to a configuration file at `~/.civitai_downloader/config.json`.
+
+**New in v1.1:**
+- Proxy settings are now hidden by default and only show when "Enable Proxy" is checked.
+- Post-download actions are now selected via a dropdown menu.
 
 ### Getting a CivitAI API Key
 
@@ -68,74 +84,20 @@ To use this tool, you need a CivitAI API key:
 3. Generate a new API key
 
 ## Usage
+1. Run `CivitAI_Downloader.exe`.
+2. Go to the **Settings** tab to configure your [API Key](https://civitai.com/user/settings) and Download Directory.
+   - You can also configure Proxy settings and Post-download actions here.
+3. Switch to the **Download** tab.
+4. Select the download type (**Collection** or **Post**).
+5. Enter the ID(s) you wish to download (comma-separated for multiple).
+6. Click **Start Download**.
 
-### Basic Usage
-
-To download media from a collection:
-
-```bash
-python main.py --collection 12345
-```
-
-To download media from a post:
-
-```bash
-python main.py --post 67890
-```
-
-### Multiple IDs
-
-You can download multiple collections or posts in a single command:
-
-```bash
-python main.py --collection 12345 23456 34567
-```
-
-### Command Line Options
-
-```
-usage: main.py [-h] (-c COLLECTION [COLLECTION ...] | -p POST [POST ...]) [-o OUTPUT] [-v] [--no-metadata] [--dry-run]
-
-Download images, videos, and metadata from CivitAI collections and posts.
-
-options:
-  -h, --help            show this help message and exit
-  -c COLLECTION [COLLECTION ...], --collection COLLECTION [COLLECTION ...]
-                        Collection ID(s) to download. Can specify multiple IDs.
-  -p POST [POST ...], --post POST [POST ...]
-                        Post ID(s) to download. Can specify multiple IDs.
-  -o OUTPUT, --output OUTPUT
-                        Override default download location
-  -v, --verbose         Enable verbose output
-  --no-metadata         Skip metadata generation
-  --dry-run             Show what would be downloaded without downloading
-```
-
-### Examples
-
-Download a single collection with verbose logging:
-
-```bash
-python main.py --collection 12345 --verbose
-```
-
-Download a post to a custom directory:
-
-```bash
-python main.py --post 67890 --output ~/Downloads/CivitAI_Post
-```
-
-Preview what would be downloaded from multiple collections:
-
-```bash
-python main.py --collection 12345 23456 34567 --dry-run
-```
-
-Download without saving metadata:
-
-```bash
-python main.py --collection 12345 --no-metadata
-```
+### Configuration
+All settings can be configured directly in the **Settings** tab of the application.
+- **API Key**: Required for downloading age-restricted content or private collections.
+- **Download Directory**: Where files will be saved.
+- **Proxy**: Support for HTTP and SOCKS5 proxies.
+- **Post-Download Action**: Choose to Close, Sleep, Hibernate, or Shutdown after tasks complete.
 
 ## Output Structure
 
