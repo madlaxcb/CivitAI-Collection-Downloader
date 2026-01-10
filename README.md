@@ -10,6 +10,9 @@ Most of the original code was generated using Claude Sonnet 3.7.
 
 This is a modified version based on the original CivitAI Downloader. It builds upon the original project’s GUI and adds some new features. This version was developed using TRAE and Gemini 3 pro,This version is more of a Collection manager than a downloader. It should be the final version, as I don't have any further needs or features in mind..
 
+https://civitai.com/articles/24054 
+You can provide feedback by replying to this post.
+
 ## Features
 
 - **Multi-threaded Downloading**: Fast downloads with concurrent connections.
