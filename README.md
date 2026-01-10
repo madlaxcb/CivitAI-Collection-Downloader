@@ -2,6 +2,16 @@
 
 A powerful, user-friendly tool to download collections, posts, and user content from CivitAI. This tool supports downloading both images and videos, with smart filtering and metadata preservation.
 
+The original project is a Python tool designed to download media (images and videos) and metadata from CivitAI collections and posts.
+
+This tool came into existence after extensive debugging and "learning experiences." I provide it as-is, with no guarantees, maintenance, or commitments. If CivitAI breaks it tomorrow, I won’t be offering any assistance. That said, it works well on my system and has successfully downloaded thousands of images and a few videos.
+
+The post functionality is completely untested, but as mentioned above, if anyone encounters issues and submits a fix or a pull request, I’ll approve it. However, to be honest, I’ve already used this tool to download the content I needed and may not use it again.
+
+Most of the original code was generated using Claude Sonnet 3.7.
+
+This is a modified version based on the original CivitAI Downloader. It builds upon the original project’s GUI and adds some new features. This version was developed using TRAE and Gemini 3 pro.
+
 ## Features
 
 - **Multi-threaded Downloading**: Fast downloads with concurrent connections.
