@@ -1,4 +1,4 @@
-# CivitAI Collection Downloader
+# CivitAI Collection Downloader（[中文版说明](https://github.com/madlaxcb/CivitAI-Collection-Downloader/blob/main/README_CN.md)）
 
 A powerful, user-friendly tool to download collections, posts, and user content from CivitAI. This tool supports downloading both images and videos, with smart filtering and metadata preservation.
 
@@ -6,11 +6,9 @@ The original project is a Python tool designed to download media (images and vid
 
 This tool came into existence after extensive debugging and "learning experiences." I provide it as-is, with no guarantees, maintenance, or commitments. If CivitAI breaks it tomorrow, I won’t be offering any assistance. That said, it works well on my system and has successfully downloaded thousands of images and a few videos.
 
-The post functionality is completely untested, but as mentioned above, if anyone encounters issues and submits a fix or a pull request, I’ll approve it. However, to be honest, I’ve already used this tool to download the content I needed and may not use it again.
-
 Most of the original code was generated using Claude Sonnet 3.7.
 
-This is a modified version based on the original CivitAI Downloader. It builds upon the original project’s GUI and adds some new features. This version was developed using TRAE and Gemini 3 pro.
+This is a modified version based on the original CivitAI Downloader. It builds upon the original project’s GUI and adds some new features. This version was developed using TRAE and Gemini 3 pro,This version is more of a Collection manager than a downloader. It should be the final version, as I don't have any further needs or features in mind..
 
 ## Features
 
@@ -19,7 +17,7 @@ This is a modified version based on the original CivitAI Downloader. It builds u
 - **Smart Filtering**: Options to download images, videos, or both.
 - **Metadata Support**: Saves image metadata and generation info (compatible with Stable Diffusion WebUI).
 - **Proxy Support**: Full HTTP/SOCKS proxy support with authentication for users in restricted network environments.
-- **Language Support**: Bilingual interface (English and Simplified Chinese / 简体中文).
+- **Language Support**: Bilingual interface (English and Simplified Chinese / 简体中文,with the option to add language files to support more languages).
 - **User Friendly UI**: Clean interface with progress tracking, logs, and preview.
 - **Optimized Video Handling**:
     - **Correct Video Downloads**: Automatically handles CivitAI CDN parameters to ensure valid MP4 files are downloaded instead of WebP previews.
