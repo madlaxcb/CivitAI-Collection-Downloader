@@ -6,7 +6,7 @@ import re
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 
-from config import config
+from config import config, get_site_base_url, get_image_cdn_base, get_image_cdn_domain
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def get_cdn_key():
         return _CACHED_CDN_KEY
         
     logger.info("Attempting to automatically retrieve CDN Key...")
-    url = "https://civitai.com/"
+    url = get_site_base_url() + "/"
     # Use headers to mimic browser
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -37,8 +37,8 @@ def get_cdn_key():
         response.raise_for_status()
         content = response.text
         
-        # Look for pattern like https://image.civitai.com/{KEY}/
-        matches = re.findall(r'https://image\.civitai\.com/([^/]+)/', content)
+        cdn_domain = get_image_cdn_domain()
+        matches = re.findall(rf'https://{re.escape(cdn_domain)}/([^/]+)/', content)
         
         if matches:
             # Use the first one found
@@ -65,6 +65,10 @@ class CivitaiAPI:
     def __init__(self, api_key=None):
         """Initialize the API client with the provided API key."""
         self.api_key = api_key or config.get('api_key')
+        self._update_base_url()
+        
+    def _update_base_url(self):
+        self.BASE_URL = get_site_base_url() + "/api/trpc"
         
         # Check if API key is available
         if not self.api_key:
@@ -420,7 +424,7 @@ class CivitaiAPI:
 
     def get_my_collections(self):
         """Get the authenticated user's collections by scraping the collections page."""
-        url = "https://civitai.com/collections"
+        url = get_site_base_url() + "/collections"
         logger.info(f"Scraping collections from: {url}")
         
         try:

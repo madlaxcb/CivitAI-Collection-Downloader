@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from config import config
 from cache import cache_manager
 from api import get_cdn_key
+from config import get_image_cdn_base, get_image_cdn_domain
 
 logger = logging.getLogger(__name__)
 
@@ -116,10 +117,9 @@ def download_file(url, output_path, mime_type=None, max_retries=3, api_key=None,
         
         # Use width for videos if available, otherwise fallback to original=true
         if mime_type and mime_type.startswith('video') and width:
-            url = f"https://image.civitai.com/{cdn_key}/{url}/width={width}"
+            url = f"{get_image_cdn_base()}/{cdn_key}/{url}/width={width}"
         else:
-            # Use original=true to ensure we get the highest quality file
-            url = f"https://image.civitai.com/{cdn_key}/{url}/original=true"
+            url = f"{get_image_cdn_base()}/{cdn_key}/{url}/original=true"
         logger.debug(f"Constructed download URL from '{original_url}' to '{url}'")
 
     # Add original=true for videos if missing (even for http URLs)
@@ -127,7 +127,7 @@ def download_file(url, output_path, mime_type=None, max_retries=3, api_key=None,
     if mime_type and mime_type.startswith('video'):
         if 'width=' in url or 'transcode=' in url or 'format=' in url:
             pass
-        elif 'image.civitai.com' in url and 'original=true' not in url:
+        elif get_image_cdn_domain() in url and 'original=true' not in url:
              # For CivitAI, it's a path component
              url = url.rstrip('/') + "/original=true"
         elif 'original=true' not in url and '?' in url:

@@ -1,5 +1,5 @@
 {
-    "app_title": "CivitAI 合集下载器 v1.2.0",
+    "app_title": "CivitAI 合集下载器 v1.3.0",
     "tabs": {
         "manager": "管理",
         "settings": "设置",
@@ -35,6 +35,7 @@
     },
     "settings": {
         "api_config": "API 配置",
+        "site_domain_label": "下载域名:",
         "api_key_label": "API Key:",
         "cdn_key_label": "CDN Key:",
         "download_dir": "下载目录:",

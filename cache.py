@@ -9,7 +9,7 @@ from pathlib import Path
 from PIL import Image, ImageTk, ImageDraw
 import io
 
-from config import config
+from config import config, get_image_cdn_domain
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ class CacheManager:
             return None
             
         # Fix CivitAI video URL if missing /original=true
-        if "image.civitai.com" in url and "original=true" not in url and "width=" not in url:
+        if get_image_cdn_domain() in url and "original=true" not in url and "width=" not in url:
              if '?' in url:
                  url += "&original=true"
              else:

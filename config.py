@@ -27,7 +27,10 @@ DEFAULT_CONFIG = {
     'show_thumbnails': False,
     'cache_dir': os.path.join(os.path.expanduser('~'), '.civitai_downloader', 'cache'),
     'max_cache_size': 500,  # MB
+    'site_domain': 'civitai.com',
 }
+
+VALID_DOMAINS = ['civitai.com', 'civitai.red']
 
 class Configuration:
     def __init__(self):
@@ -85,6 +88,17 @@ class Configuration:
         }
 
 config = Configuration()
+
+def get_site_base_url():
+    domain = config.get('site_domain', 'civitai.com')
+    return f"https://{domain}"
+
+def get_image_cdn_domain():
+    return "image.civitai.com"
+
+def get_image_cdn_base():
+    return "https://image.civitai.com"
+
 def prompt_for_config():
     print("\n=== CivitAI Downloader Configuration ===")
     api_key = input("Please enter your CivitAI API key: ").strip()

@@ -1,5 +1,5 @@
 {
-    "app_title": "CivitAI Collection Downloader v1.2.0",
+    "app_title": "CivitAI Collection Downloader v1.3.0",
     "tabs": {
         "manager": "Manager",
         "settings": "Settings",
@@ -35,6 +35,7 @@
     },
     "settings": {
         "api_config": "API Configuration",
+        "site_domain_label": "Site Domain:",
         "api_key_label": "API Key:",
         "cdn_key_label": "CDN Key:",
         "download_dir": "Download Directory:",

@@ -19,7 +19,7 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 from pathlib import Path
 
 # Import application modules
-from config import config, init_config, setup_logging, Configuration
+from config import config, init_config, setup_logging, Configuration, get_image_cdn_base, get_image_cdn_domain, VALID_DOMAINS
 from api import CivitaiAPI, extract_metadata, create_collection_metadata, get_cdn_key
 from downloader import create_download_directory, download_media, save_metadata, sanitize_filename
 from cache import cache_manager
@@ -346,8 +346,8 @@ class CivitAIDownloaderGUI:
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
         # Build tabs
-        self._build_manager_tab()
         self._build_settings_tab()
+        self._build_manager_tab()
         self._build_download_tab()
         self._build_about_tab()
         
@@ -477,9 +477,9 @@ class CivitAIDownloaderGUI:
                                url.lower().endswith(('.mp4', '.mov', '.webm'))
                     
                     if is_video:
-                         url = f"https://image.civitai.com/{cdn_key}/{url}"
+                         url = f"{get_image_cdn_base()}/{cdn_key}/{url}"
                     else:
-                         url = f"https://image.civitai.com/{cdn_key}/{url}/width=450"
+                         url = f"{get_image_cdn_base()}/{cdn_key}/{url}/width=450"
                          
                 self.root.clipboard_clear()
                 self.root.clipboard_append(url)
@@ -505,9 +505,9 @@ class CivitAIDownloaderGUI:
         if not url.startswith('http'):
             cdn_key = get_cdn_key()
             if is_video and width:
-                url = f"https://image.civitai.com/{cdn_key}/{url}/width={width}"
+                url = f"{get_image_cdn_base()}/{cdn_key}/{url}/width={width}"
             else:
-                url = f"https://image.civitai.com/{cdn_key}/{url}"
+                url = f"{get_image_cdn_base()}/{cdn_key}/{url}"
 
         def task():
             try:
@@ -516,17 +516,16 @@ class CivitAIDownloaderGUI:
                 download_url = url
                 
                 # Ensure video URL has width or original=true
-                if is_video and "image.civitai.com" in download_url:
+                if is_video and get_image_cdn_domain() in download_url:
                     if "width=" in download_url:
-                        pass # Already has width, good
+                        pass
                     elif "original=true" not in download_url:
                         if '?' in download_url:
                             download_url += "&original=true"
                         else:
                             download_url += "/original=true"
                 elif not is_video:
-                    # Ensure image URL has /original=true or width if it's a CivitAI URL and missing params
-                    if "image.civitai.com" in download_url and "width=" not in download_url and "original=" not in download_url:
+                    if get_image_cdn_domain() in download_url and "width=" not in download_url and "original=" not in download_url:
                         if '?' in download_url:
                             download_url += "&original=true"
                         else:
@@ -764,10 +763,9 @@ class CivitAIDownloaderGUI:
 
         if not image_url.startswith('http'):
             cdn_key = get_cdn_key()
-            image_url = f"https://image.civitai.com/{cdn_key}/{image_url}"
+            image_url = f"{get_image_cdn_base()}/{cdn_key}/{image_url}"
             
-        # Ensure video URL has /original=true if it's a CivitAI URL
-        if is_video and "image.civitai.com" in image_url and "original=true" not in image_url:
+        if is_video and get_image_cdn_domain() in image_url and "original=true" not in image_url:
              if '?' in image_url:
                  image_url += "&original=true"
              else:
@@ -788,14 +786,13 @@ class CivitAIDownloaderGUI:
                 # Use WebP preview for videos as requested, or standard preview for images
                 display_url = image_url
                 
-                if is_video and "image.civitai.com" in display_url:
-                    # For videos, ensure we use original=true to get the WebP preview
+                if is_video and get_image_cdn_domain() in display_url:
                     if "original=true" not in display_url:
                         if '?' in display_url:
                             display_url += "&original=true"
                         else:
                             display_url = display_url.rstrip('/') + "/original=true"
-                elif "/width=" not in display_url and "image.civitai.com" in display_url and not is_video:
+                elif "/width=" not in display_url and get_image_cdn_domain() in display_url and not is_video:
                      # For images, use width=450 if constructed from UUID
                      display_url = f"{display_url}/width=450"
 
@@ -1036,6 +1033,18 @@ class CivitAIDownloaderGUI:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+        def _on_enter(event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        def _on_leave(event):
+            canvas.unbind_all("<MouseWheel>")
+        
+        canvas.bind("<Enter>", _on_enter)
+        canvas.bind("<Leave>", _on_leave)
+        
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
@@ -1053,19 +1062,25 @@ class CivitAIDownloaderGUI:
         api_frame = ttk.LabelFrame(scrollable_frame, text=i18n.get("settings.api_config"), padding="5")
         api_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
         
-        ttk.Label(api_frame, text=i18n.get("settings.api_key_label")).grid(row=0, column=0, sticky=tk.W, padx=5)
+        ttk.Label(api_frame, text=i18n.get("settings.site_domain_label")).grid(row=0, column=0, sticky=tk.W, padx=5)
+        self.site_domain_var = tk.StringVar(value='civitai.com')
+        self.site_domain_combo = ttk.Combobox(api_frame, textvariable=self.site_domain_var, 
+                                               values=VALID_DOMAINS, state="readonly", width=25)
+        self.site_domain_combo.grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+        
+        ttk.Label(api_frame, text=i18n.get("settings.api_key_label")).grid(row=1, column=0, sticky=tk.W, padx=5)
         self.api_key_var = tk.StringVar()
         self.api_key_entry = ttk.Entry(api_frame, textvariable=self.api_key_var, width=50, show="*")
-        self.api_key_entry.grid(row=0, column=1, padx=5, pady=2, sticky=tk.EW)
+        self.api_key_entry.grid(row=1, column=1, padx=5, pady=2, sticky=tk.EW)
 
-        ttk.Label(api_frame, text=i18n.get("settings.cdn_key_label")).grid(row=1, column=0, sticky=tk.W, padx=5)
+        ttk.Label(api_frame, text=i18n.get("settings.cdn_key_label")).grid(row=2, column=0, sticky=tk.W, padx=5)
         self.cdn_key_var = tk.StringVar()
-        ttk.Entry(api_frame, textvariable=self.cdn_key_var, width=50).grid(row=1, column=1, padx=5, pady=2, sticky=tk.EW)
+        ttk.Entry(api_frame, textvariable=self.cdn_key_var, width=50).grid(row=2, column=1, padx=5, pady=2, sticky=tk.EW)
         
-        ttk.Label(api_frame, text=i18n.get("settings.download_dir")).grid(row=2, column=0, sticky=tk.W, padx=5)
+        ttk.Label(api_frame, text=i18n.get("settings.download_dir")).grid(row=3, column=0, sticky=tk.W, padx=5)
         self.download_dir_var = tk.StringVar()
         dir_frame = ttk.Frame(api_frame)
-        dir_frame.grid(row=2, column=1, sticky=tk.EW, padx=5, pady=2)
+        dir_frame.grid(row=3, column=1, sticky=tk.EW, padx=5, pady=2)
         ttk.Entry(dir_frame, textvariable=self.download_dir_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(dir_frame, text=i18n.get("settings.browse"), command=self._browse_directory).pack(side=tk.LEFT, padx=(5, 0))
         ttk.Button(dir_frame, text=i18n.get("settings.open_folder"), command=self._open_download_dir).pack(side=tk.LEFT, padx=(5, 0))
@@ -1283,7 +1298,7 @@ class CivitAIDownloaderGUI:
         title_label.pack(pady=(0, 10))
         
         # Version
-        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.2.0"), font=('', 12))
+        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.3.0"), font=('', 12))
         version_label.pack(pady=(0, 20))
         
         # Links
@@ -1365,6 +1380,7 @@ class CivitAIDownloaderGUI:
     def _load_settings_to_ui(self):
         """Load configuration values into UI fields."""
         self.language_var.set(config.get('language', 'zh_CN'))
+        self.site_domain_var.set(config.get('site_domain', 'civitai.com'))
         self.api_key_var.set(config.get('api_key', ''))
         self.cdn_key_var.set(config.get('cdn_key', ''))
         self.download_dir_var.set(config.get('download_dir', ''))
@@ -1416,7 +1432,11 @@ class CivitAIDownloaderGUI:
     def _save_settings_to_config(self):
         """Save current UI settings to config object (without saving to file)."""
         config['language'] = self.language_var.get()
+        config['site_domain'] = self.site_domain_var.get()
         config['api_key'] = self.api_key_var.get()
+        
+        import api as api_module
+        api_module._CACHED_CDN_KEY = None
         config['cdn_key'] = self.cdn_key_var.get()
         config['download_dir'] = self.download_dir_var.get()
         
@@ -1485,8 +1505,8 @@ class CivitAIDownloaderGUI:
             widget.destroy()
             
         # Rebuild tabs in order
-        self._build_manager_tab()
         self._build_settings_tab()
+        self._build_manager_tab()
         self._build_download_tab()
         self._build_about_tab()
         
@@ -1691,8 +1711,9 @@ class CivitAIDownloaderGUI:
         
         try:
             # Handle full URL input
-            if "civitai.com/user/" in username:
-                username = username.split("civitai.com/user/")[1].split("/")[0]
+            current_domain = config.get('site_domain', 'civitai.com')
+            if f"{current_domain}/user/" in username:
+                username = username.split(f"{current_domain}/user/")[1].split("/")[0]
             
             download_dir = create_download_directory({"collection": {"id": f"user-{username}", "name": username}})
             media_items = api.get_all_images_by_username(username)
