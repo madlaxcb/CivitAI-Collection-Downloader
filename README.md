@@ -53,6 +53,7 @@ You can provide feedback by replying to this post.
 ### 1. Installation
 1.  **Download**: Get the latest release (`CivitAI_Downloader.exe`) from the Releases page.
 2.  **Run**: Double-click `CivitAI_Downloader.exe` to launch the application.
+    *   *Note: Since the executable is not code-signed, Windows SmartScreen may show "Windows protected your PC" on first run. Click **"More info"** → **"Run anyway"** to proceed.*
 
 ### 2. Configuration
 1.  **Domain Selection** (New):

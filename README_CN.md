@@ -53,6 +53,7 @@ https://civitai.com/articles/24054
 ### 1. 安装
 1.  **下载**：从 Releases 页面获取最新版本（`CivitAI_Downloader.exe`）。
 2.  **运行**：双击 `CivitAI_Downloader.exe` 启动程序。
+    *   *注意：由于程序未经代码签名，首次运行时 Windows SmartScreen 可能会提示"Windows 已保护你的电脑"。请点击 **"更多信息"** → **"仍要运行"** 即可继续。*
 
 ### 2. 配置
 1.  **域名选择**（新增）：
