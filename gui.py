@@ -20,8 +20,16 @@ from pathlib import Path
 
 # Import application modules
 from config import config, init_config, setup_logging, Configuration, get_image_cdn_base, get_image_cdn_domain, VALID_DOMAINS
-from api import CivitaiAPI, extract_metadata, create_collection_metadata, get_cdn_key
-from downloader import create_download_directory, download_media, save_metadata, sanitize_filename
+from api import CivitaiAPI, extract_metadata, create_collection_metadata, get_cdn_key, parse_model_input
+from downloader import (
+    create_download_directory,
+    download_media,
+    save_metadata,
+    sanitize_filename,
+    create_model_directory,
+    download_model_file,
+    download_model_image,
+)
 from cache import cache_manager
 from tkVideoPlayer import TkinterVideo
 from language_manager import i18n
@@ -1234,17 +1242,66 @@ class CivitAIDownloaderGUI:
         
         self.task_type_var = tk.StringVar(value="collection")
         ttk.Radiobutton(task_frame, text=i18n.get("download.collection"), variable=self.task_type_var, 
-                        value="collection").grid(row=0, column=0, sticky=tk.W, padx=5)
+                        value="collection", command=self._on_task_type_changed).grid(row=0, column=0, sticky=tk.W, padx=5)
         ttk.Radiobutton(task_frame, text=i18n.get("download.post"), variable=self.task_type_var, 
-                        value="post").grid(row=0, column=1, sticky=tk.W, padx=5)
+                        value="post", command=self._on_task_type_changed).grid(row=0, column=1, sticky=tk.W, padx=5)
         ttk.Radiobutton(task_frame, text=i18n.get("download.user"), variable=self.task_type_var, 
-                        value="user").grid(row=0, column=2, sticky=tk.W, padx=5)
+                        value="user", command=self._on_task_type_changed).grid(row=0, column=2, sticky=tk.W, padx=5)
+        ttk.Radiobutton(task_frame, text=i18n.get("download.model"), variable=self.task_type_var, 
+                        value="model", command=self._on_task_type_changed).grid(row=0, column=3, sticky=tk.W, padx=5)
         
         ttk.Label(task_frame, text=i18n.get("download.id_label")).grid(row=1, column=0, sticky=tk.W, padx=5, pady=(10, 0))
         self.ids_var = tk.StringVar()
-        ttk.Entry(task_frame, textvariable=self.ids_var, width=50).grid(row=2, column=0, columnspan=3, 
+        ttk.Entry(task_frame, textvariable=self.ids_var, width=50).grid(row=2, column=0, columnspan=4, 
                                                                          sticky=tk.EW, padx=5, pady=5)
-        task_frame.columnconfigure(2, weight=1)
+        task_frame.columnconfigure(3, weight=1)
+
+        # Model-specific options (hidden unless task type is model)
+        self._download_task_frame = task_frame
+        self.model_options_frame = ttk.LabelFrame(download_frame, text=i18n.get("download.model_options"), padding="5")
+
+        self.model_latest_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            self.model_options_frame,
+            text=i18n.get("download.model_latest"),
+            variable=self.model_latest_var,
+            command=self._on_model_latest_toggled
+        ).grid(row=0, column=0, sticky=tk.W, padx=5)
+
+        self.model_json_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            self.model_options_frame,
+            text=i18n.get("download.model_json"),
+            variable=self.model_json_var
+        ).grid(row=0, column=1, sticky=tk.W, padx=5)
+
+        self.model_images_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            self.model_options_frame,
+            text=i18n.get("download.model_images"),
+            variable=self.model_images_var
+        ).grid(row=0, column=2, sticky=tk.W, padx=5)
+
+        ttk.Label(self.model_options_frame, text=i18n.get("download.model_version")).grid(
+            row=1, column=0, sticky=tk.W, padx=5, pady=(8, 0)
+        )
+        self.model_version_var = tk.StringVar()
+        self.model_version_combo = ttk.Combobox(
+            self.model_options_frame,
+            textvariable=self.model_version_var,
+            state="disabled",
+            width=50
+        )
+        self.model_version_combo.grid(row=1, column=1, columnspan=2, sticky=tk.EW, padx=5, pady=(8, 0))
+        self.model_options_frame.columnconfigure(2, weight=1)
+
+        self.model_fetch_btn = ttk.Button(
+            self.model_options_frame,
+            text=i18n.get("download.model_fetch_versions"),
+            command=self._fetch_model_versions
+        )
+        self.model_fetch_btn.grid(row=2, column=0, sticky=tk.W, padx=5, pady=(8, 0))
+        self._model_versions = []
         
         # Options
         options_frame = ttk.LabelFrame(download_frame, text=i18n.get("download.options"), padding="5")
@@ -1255,6 +1312,8 @@ class CivitAIDownloaderGUI:
         
         self.no_metadata_var = tk.BooleanVar()
         ttk.Checkbutton(options_frame, text=i18n.get("download.no_metadata"), variable=self.no_metadata_var).pack(side=tk.LEFT, padx=10)
+
+        self._on_task_type_changed()
         
         # Control Buttons
         btn_frame = ttk.Frame(download_frame)
@@ -1298,7 +1357,7 @@ class CivitAIDownloaderGUI:
         title_label.pack(pady=(0, 10))
         
         # Version
-        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.3.0"), font=('', 12))
+        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.4"), font=('', 12))
         version_label.pack(pady=(0, 20))
         
         # Links
@@ -1608,6 +1667,89 @@ class CivitAIDownloaderGUI:
         else:
             subprocess.run(['xdg-open', download_dir])
         
+    def _on_task_type_changed(self):
+        """Show/hide model options based on selected task type."""
+        if not hasattr(self, 'model_options_frame'):
+            return
+        if self.task_type_var.get() == "model":
+            after_widget = getattr(self, '_download_task_frame', None)
+            if after_widget is not None:
+                self.model_options_frame.pack(fill=tk.X, pady=(0, 10), after=after_widget)
+            else:
+                self.model_options_frame.pack(fill=tk.X, pady=(0, 10))
+            self._on_model_latest_toggled()
+        else:
+            self.model_options_frame.pack_forget()
+
+    def _on_model_latest_toggled(self):
+        """Enable version combo only when latest is unchecked."""
+        if not hasattr(self, 'model_version_combo'):
+            return
+        if self.model_latest_var.get():
+            self.model_version_combo.configure(state="disabled")
+        else:
+            self.model_version_combo.configure(state="readonly")
+
+    def _fetch_model_versions(self):
+        """Fetch model versions for the version selector."""
+        ids_str = self.ids_var.get().strip()
+        if not ids_str:
+            messagebox.showerror(i18n.get("messages.error"), i18n.get("messages.enter_id"))
+            return
+
+        first = [x.strip() for x in ids_str.split(',') if x.strip()][0]
+        model_id, version_id = parse_model_input(first)
+        if not model_id:
+            messagebox.showerror(i18n.get("messages.error"), i18n.get("messages.invalid_model_id"))
+            return
+
+        api_key = self.api_key_var.get().strip() or config.get('api_key')
+        self.model_fetch_btn.configure(state=tk.DISABLED)
+        self._update_progress(i18n.get("download.model_fetching"))
+
+        def worker():
+            try:
+                api = CivitaiAPI(api_key)
+                model = api.get_model_by_id(model_id)
+                if not model:
+                    self.root.after(0, lambda: messagebox.showerror(
+                        i18n.get("messages.error"), i18n.get("messages.model_fetch_failed")
+                    ))
+                    return
+                versions = model.get('modelVersions') or []
+                labels = []
+                self._model_versions = []
+                for v in versions:
+                    vid = v.get('id')
+                    name = v.get('name') or str(vid)
+                    base = v.get('baseModel') or ''
+                    label = f"{name} (ID:{vid}" + (f", {base}" if base else "") + ")"
+                    labels.append(label)
+                    self._model_versions.append(v)
+                def apply():
+                    self.model_version_combo['values'] = labels
+                    if labels:
+                        # Prefer version from URL, else first/latest
+                        selected = 0
+                        if version_id:
+                            for i, v in enumerate(self._model_versions):
+                                if v.get('id') == version_id:
+                                    selected = i
+                                    break
+                        self.model_version_combo.current(selected)
+                        self.model_latest_var.set(False)
+                        self._on_model_latest_toggled()
+                    self._update_progress(i18n.get("download.model_versions_loaded", count=len(labels)))
+                self.root.after(0, apply)
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror(
+                    i18n.get("messages.error"), i18n.get("messages.model_fetch_failed_detail", error=e)
+                ))
+            finally:
+                self.root.after(0, lambda: self.model_fetch_btn.configure(state=tk.NORMAL))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _start_download(self):
         """Start the download process in a separate thread."""
         # Validate inputs
@@ -1620,11 +1762,16 @@ class CivitAIDownloaderGUI:
         if not api_key:
             messagebox.showerror(i18n.get("messages.error"), i18n.get("messages.configure_api_key"))
             return
+
+        task_type = self.task_type_var.get()
             
-        # Check file type selection
-        if not self.download_images_var.get() and not self.download_videos_var.get():
+        # Check file type selection (not required for model downloads)
+        if task_type != "model" and not self.download_images_var.get() and not self.download_videos_var.get():
             messagebox.showerror(i18n.get("messages.error"), i18n.get("messages.select_file_type"))
             return
+
+        if task_type == "model" and (not self.model_latest_var.get()) and not self.model_version_var.get() and not self._model_versions:
+            messagebox.showwarning(i18n.get("messages.warning"), i18n.get("messages.model_select_version_hint"))
             
         # Apply current settings to config
         self._save_settings_to_config()
@@ -1688,6 +1835,8 @@ class CivitAIDownloaderGUI:
                 elif task_type == "user":
                     success = self._process_user(api, task_id, dry_run, skip_metadata, api_key,
                                                   total_files_downloaded, pause_enabled, pause_after, pause_duration)
+                elif task_type == "model":
+                    success = self._process_model(api, task_id, dry_run, api_key)
                 else:
                     success = self._process_post(api, task_id, dry_run, skip_metadata, api_key,
                                                   total_files_downloaded, pause_enabled, pause_after, pause_duration)
@@ -1704,6 +1853,144 @@ class CivitAIDownloaderGUI:
         finally:
             self.root.after(0, self._download_finished)
             
+    def _process_model(self, api, model_input, dry_run, api_key):
+        """Download a CivitAI model by ID or URL."""
+        logger = logging.getLogger()
+        try:
+            model_id, version_id_from_url = parse_model_input(model_input)
+            if not model_id:
+                logger.error(i18n.get("messages.invalid_model_id"))
+                return False
+
+            self._update_progress(i18n.get("download.model_fetching"))
+            model = api.get_model_by_id(model_id)
+            if not model:
+                logger.error(i18n.get("messages.model_fetch_failed"))
+                return False
+
+            model_name = model.get('name') or f"Model-{model_id}"
+            versions = model.get('modelVersions') or []
+            if not versions:
+                logger.error(i18n.get("download.model_no_versions", id=model_id))
+                return False
+
+            # Resolve target version
+            selected_version = None
+            if self.model_latest_var.get():
+                selected_version = versions[0]
+            else:
+                # Prefer UI selection
+                combo_idx = self.model_version_combo.current()
+                if combo_idx is not None and combo_idx >= 0 and combo_idx < len(self._model_versions):
+                    selected_version = self._model_versions[combo_idx]
+                elif version_id_from_url:
+                    for v in versions:
+                        if v.get('id') == version_id_from_url:
+                            selected_version = v
+                            break
+                if selected_version is None:
+                    selected_version = versions[0]
+                    logger.info(i18n.get("download.model_fallback_latest"))
+
+            version_id = selected_version.get('id')
+            version_name = selected_version.get('name') or str(version_id)
+            files = selected_version.get('files') or []
+            if not files:
+                logger.error(i18n.get("download.model_no_files", version=version_name))
+                return False
+
+            # Prefer primary model file, else first file
+            primary = next((f for f in files if f.get('primary')), None)
+            model_files = [primary] if primary else [files[0]]
+
+            model_dir = create_model_directory(model_name, model_id)
+            logger.info(i18n.get("download.model_dir", path=str(model_dir)))
+
+            # Save model/version JSON
+            if self.model_json_var.get() and not dry_run:
+                save_metadata(model, model_dir / f"{sanitize_filename(model_name)}.json")
+                save_metadata(selected_version, model_dir / f"{sanitize_filename(model_name)}_v{version_id}.json")
+
+            # Download example images
+            if self.model_images_var.get():
+                images = selected_version.get('images') or []
+                images_dir = model_dir / "images"
+                if images and not dry_run:
+                    images_dir.mkdir(parents=True, exist_ok=True)
+                for i, img in enumerate(images):
+                    if self.stop_requested:
+                        break
+                    url = img.get('url')
+                    if not url:
+                        continue
+                    if dry_run:
+                        logger.info(i18n.get("download.preview_download", id=f"img-{i+1}", url=url))
+                        continue
+                    # Guess extension from URL
+                    ext = Path(url.split('?')[0]).suffix or '.jpeg'
+                    if len(ext) > 5:
+                        ext = '.jpeg'
+                    dest = images_dir / f"example_{i+1:02d}{ext}"
+                    if dest.exists():
+                        logger.info(i18n.get("download.model_skip_existing", name=dest.name))
+                        continue
+                    self._update_progress(i18n.get("download.model_downloading_image", current=i+1, total=len(images)))
+                    download_model_image(url, dest, api_key)
+
+            # Download model files
+            for f in model_files:
+                if self.stop_requested:
+                    break
+                file_name = f.get('name') or f"model_{version_id}.safetensors"
+                download_url = f.get('downloadUrl') or selected_version.get('downloadUrl')
+                if not download_url:
+                    from config import get_site_base_url
+                    download_url = f"{get_site_base_url()}/api/download/models/{version_id}"
+
+                dest = model_dir / sanitize_filename(file_name)
+                size_kb = f.get('sizeKB')
+                size_info = f"{size_kb/1024:.1f} MB" if size_kb else "unknown size"
+                if dry_run:
+                    logger.info(i18n.get("download.preview_download", id=file_name, url=f"{download_url} ({size_info})"))
+                    continue
+                if dest.exists() and dest.stat().st_size > 0:
+                    logger.info(i18n.get("download.model_skip_existing", name=dest.name))
+                    continue
+
+                def on_progress(downloaded, total):
+                    if total:
+                        pct = downloaded * 100 / total
+                        self._update_progress(
+                            i18n.get(
+                                "download.model_file_progress",
+                                name=file_name,
+                                pct=f"{pct:.1f}",
+                                done=f"{downloaded/1024/1024:.1f}",
+                                total=f"{total/1024/1024:.1f}",
+                            )
+                        )
+                    else:
+                        self._update_progress(
+                            i18n.get(
+                                "download.model_file_progress_unknown",
+                                name=file_name,
+                                done=f"{downloaded/1024/1024:.1f}",
+                            )
+                        )
+
+                logger.info(i18n.get("download.model_downloading_file", name=file_name, size=size_info))
+                expected_bytes = int(size_kb * 1024) if size_kb else None
+                result = download_model_file(download_url, dest, api_key=api_key, progress_callback=on_progress, expected_size=expected_bytes)
+                if not result:
+                    logger.error(i18n.get("download.model_file_failed", name=file_name))
+                    return False
+
+            logger.info(i18n.get("download.model_success", name=model_name, version=version_name, path=str(model_dir)))
+            return True
+        except Exception as e:
+            logger.error(i18n.get("download.error_process", type="model", id=model_input, error=e))
+            return False
+
     def _process_user(self, api, username, dry_run, skip_metadata, api_key,
                       files_counter, pause_enabled, pause_after, pause_duration):
         """Process a user download."""
@@ -1742,22 +2029,26 @@ class CivitAIDownloaderGUI:
                     
                 self._update_progress(i18n.get("download.processing_item", current=i+1, total=len(media_items), id=item.get('id')))
                 
-                if dry_run:
-                    logger.info(i18n.get("download.preview_download", id=item.get('id'), url=item.get('url')))
-                    downloaded_items.append(item)
-                    files_counter += 1
-                else:
-                    file_path = download_media(item, download_dir, api_key)
-                    if file_path:
-                        files_counter += 1
-                        
-                        # Handle metadata
-                        if not skip_metadata:
-                            metadata = extract_metadata(api, item)
-                            json_path = file_path.with_suffix('.json')
-                            save_metadata(metadata, json_path)
-                            
+                try:
+                    if dry_run:
+                        logger.info(i18n.get("download.preview_download", id=item.get('id'), url=item.get('url')))
                         downloaded_items.append(item)
+                        files_counter += 1
+                    else:
+                        file_path = download_media(item, download_dir, api_key)
+                        if file_path:
+                            files_counter += 1
+                            
+                            # Handle metadata
+                            if not skip_metadata:
+                                metadata = extract_metadata(api, item)
+                                json_path = file_path.with_suffix('.json')
+                                save_metadata(metadata, json_path)
+                                
+                            downloaded_items.append(item)
+                except Exception as item_e:
+                    logger.error(i18n.get("download.error_process", type="Item", id=item.get('id'), error=item_e))
+                    continue
             
             # Save collection metadata for user
             if not skip_metadata and not dry_run:
@@ -1810,27 +2101,31 @@ class CivitAIDownloaderGUI:
                     
                 self._update_progress(i18n.get("download.processing_item", current=i+1, total=len(media_items), id=item_id))
                 
-                item_details = api.get_image_details(item_id) or item
-                metadata = extract_metadata(api, item_details)
-                items_metadata.append(metadata)
-                
-                if not dry_run:
-                    downloaded_file = download_media(item_details, download_dir, api_key)
-                    if downloaded_file:
-                        downloaded_items.append(downloaded_file)
-                        files_in_batch += 1
-                        
-                        if not skip_metadata:
-                            base_name = downloaded_file.stem
-                            meta_path = download_dir / f"{base_name}_metadata.json"
-                            save_metadata(metadata, meta_path)
+                try:
+                    item_details = api.get_image_details(item_id) or item
+                    metadata = extract_metadata(api, item_details)
+                    items_metadata.append(metadata)
+                    
+                    if not dry_run:
+                        downloaded_file = download_media(item_details, download_dir, api_key)
+                        if downloaded_file:
+                            downloaded_items.append(downloaded_file)
+                            files_in_batch += 1
                             
-                        # Check pause condition
-                        if pause_enabled and files_in_batch >= pause_after:
-                            logger.info(i18n.get("download.paused_after", count=pause_after, seconds=pause_duration))
-                            self._update_progress(i18n.get("download.pausing", seconds=pause_duration))
-                            time.sleep(pause_duration)
-                            files_in_batch = 0
+                            if not skip_metadata:
+                                base_name = downloaded_file.stem
+                                meta_path = download_dir / f"{base_name}_metadata.json"
+                                save_metadata(metadata, meta_path)
+                                
+                            # Check pause condition
+                            if pause_enabled and files_in_batch >= pause_after:
+                                logger.info(i18n.get("download.paused_after", count=pause_after, seconds=pause_duration))
+                                self._update_progress(i18n.get("download.pausing", seconds=pause_duration))
+                                time.sleep(pause_duration)
+                                files_in_batch = 0
+                except Exception as item_e:
+                    logger.error(i18n.get("download.error_process", type="Item", id=item_id, error=item_e))
+                    continue
                             
             if not skip_metadata and not dry_run and items_metadata:
                 collection_data = api.get_collection_by_id(collection_id)
@@ -1900,27 +2195,31 @@ class CivitAIDownloaderGUI:
                     
                 self._update_progress(i18n.get("download.processing_item", current=i+1, total=len(media_items), id=item_id))
                 
-                item_details = api.get_image_details(item_id) or item
-                metadata = extract_metadata(api, item_details)
-                items_metadata.append(metadata)
-                
-                if not dry_run:
-                    downloaded_file = download_media(item_details, download_dir, api_key)
-                    if downloaded_file:
-                        downloaded_items.append(downloaded_file)
-                        files_in_batch += 1
-                        
-                        if not skip_metadata:
-                            base_name = downloaded_file.stem
-                            meta_path = download_dir / f"{base_name}_metadata.json"
-                            save_metadata(metadata, meta_path)
+                try:
+                    item_details = api.get_image_details(item_id) or item
+                    metadata = extract_metadata(api, item_details)
+                    items_metadata.append(metadata)
+                    
+                    if not dry_run:
+                        downloaded_file = download_media(item_details, download_dir, api_key)
+                        if downloaded_file:
+                            downloaded_items.append(downloaded_file)
+                            files_in_batch += 1
                             
-                        # Check pause condition
-                        if pause_enabled and files_in_batch >= pause_after:
-                            logger.info(i18n.get("download.paused_after", count=pause_after, seconds=pause_duration))
-                            self._update_progress(i18n.get("download.pausing", seconds=pause_duration))
-                            time.sleep(pause_duration)
-                            files_in_batch = 0
+                            if not skip_metadata:
+                                base_name = downloaded_file.stem
+                                meta_path = download_dir / f"{base_name}_metadata.json"
+                                save_metadata(metadata, meta_path)
+                                
+                            # Check pause condition
+                            if pause_enabled and files_in_batch >= pause_after:
+                                logger.info(i18n.get("download.paused_after", count=pause_after, seconds=pause_duration))
+                                self._update_progress(i18n.get("download.pausing", seconds=pause_duration))
+                                time.sleep(pause_duration)
+                                files_in_batch = 0
+                except Exception as item_e:
+                    logger.error(i18n.get("download.error_process", type="Item", id=item_id, error=item_e))
+                    continue
                             
             if not skip_metadata and not dry_run:
                 post_metadata = {

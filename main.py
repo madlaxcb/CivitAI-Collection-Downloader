@@ -2,7 +2,6 @@
 import os
 import sys
 import time
-import yaml
 import argparse
 import logging
 from pathlib import Path

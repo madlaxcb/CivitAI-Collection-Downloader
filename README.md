@@ -16,7 +16,8 @@ You can provide feedback by replying to this post.
 ## Features
 
 - **Multi-threaded Downloading**: Fast downloads with concurrent connections.
-- **Resume Capability**: Skips already downloaded files to save time and bandwidth.
+- **Resume Capability**: Skips already downloaded files to save time and bandwidth. Model downloads support HTTP Range-based resume after interruption.
+- **Disk Space Check**: Verifies free disk space before downloading model files to prevent partial downloads and disk-full errors.
 - **Smart Filtering**: Options to download images, videos, or both.
 - **Metadata Support**: Saves image metadata and generation info (compatible with Stable Diffusion WebUI).
 - **Domain Selection**: Choose between `civitai.com` and `civitai.red` as the download source.
@@ -28,6 +29,17 @@ You can provide feedback by replying to this post.
     - **Efficient Previews**: Uses lightweight WebP previews in the UI to reduce memory usage and prevent crashes.
 - **Portable**: Available as a standalone single-file executable, no installation required.
 - **Customizable**: Editable language files and configuration.
+
+## What's New in v1.4
+
+- **Collection Management (Fixed)**: Replaced broken HTML scraping with the official TRPC API (`collection.getAllUser`) for listing user collections. Previous 403 Forbidden errors are resolved.
+- **Collection File Listing (Fixed)**: Fixed `'str' object has no attribute 'get'` error when fetching files in a collection. The `image.getInfinite` endpoint returns superjson devalue-serialized data; added a decoder to properly parse it. Now correctly lists all files (images + videos) with full pagination support.
+- **API-Only Architecture**: All features now use official CivitAI APIs (TRPC + REST). Removed the last HTML scraping path (CDN key retrieval) in favor of the REST API.
+- **Model Download Resume**: Reinforced HTTP Range-based resume for model files. Handles 416 errors, server non-support for Range, and retains `.part` files for next-run resume. Validates downloaded file size against `Content-Length` / API-provided `sizeKB`.
+- **Disk Space Verification**: Checks free disk space (with 5% / 50MB safety margin) before starting and resuming model downloads. Aborts early with a clear error if space is insufficient.
+- **Robust Error Handling**: A single corrupt media item no longer aborts an entire collection/post/user download. Errors are logged per-item and the batch continues.
+- **SOCKS5 Proxy Support**: Added `PySocks` dependency so SOCKS5 proxies work out of the box.
+- **Minor Fixes**: Removed unused `import yaml` that caused startup crash; removed unused `beautifulsoup4` dependency.
 
 ## What's New in v1.3.0
 

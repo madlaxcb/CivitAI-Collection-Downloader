@@ -133,7 +133,7 @@ Description of the copyrighted work you claim is infringed.
 Specific location of the infringed content on the internet (URL link).
 A statement that you believe the use is unauthorized by the copyright owner, their agent, or the law.
 A statement that the information provided is true and accurate, and you are willing to bear legal liability for perjury.
-Contact: madlaxcb@gmail.com
+Contact: madlaxcb#gmail.com
 
 After receiving a valid infringement notice, although we cannot delete content from the source, we will take necessary measures within our technical capabilities, such as blocking access to the infringing link in subsequent versions.
 

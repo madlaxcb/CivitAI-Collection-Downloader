@@ -1,5 +1,5 @@
 {
-    "app_title": "CivitAI Collection Downloader v1.3.0",
+    "app_title": "CivitAI Collection Downloader v1.4",
     "tabs": {
         "manager": "Manager",
         "settings": "Settings",
@@ -176,6 +176,10 @@
         "save_failed": "Failed to save settings: {error}",
         "dir_not_exist": "Download directory does not exist",
         "enter_id": "Please enter at least one ID",
+        "invalid_model_id": "Invalid model ID or URL",
+        "model_fetch_failed": "Failed to fetch model info",
+        "model_fetch_failed_detail": "Failed to fetch model info: {error}",
+        "model_select_version_hint": "When 'Latest' is unchecked, please fetch versions and select one first",
         "select_file_type": "Please select at least one file type",
         "cache_cleared": "Cache cleared",
         "cache_clear_failed": "Failed to clear cache, check logs",

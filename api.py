@@ -4,7 +4,6 @@ import logging
 import requests
 import re
 from urllib.parse import quote
-from bs4 import BeautifulSoup
 
 from config import config, get_site_base_url, get_image_cdn_base, get_image_cdn_domain
 
@@ -25,31 +24,37 @@ def get_cdn_key():
         _CACHED_CDN_KEY = config_key.strip()
         return _CACHED_CDN_KEY
         
-    logger.info("Attempting to automatically retrieve CDN Key...")
-    url = get_site_base_url() + "/"
-    # Use headers to mimic browser
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
+    logger.info("Attempting to retrieve CDN Key via API...")
+    cdn_domain = get_image_cdn_domain()
+
     try:
-        response = requests.get(url, headers=headers, timeout=10, proxies=config.get_proxies())
+        # Use the REST API to get a model with images (model ID 1 is lightweight, ~4KB)
+        api_url = get_site_base_url() + "/api/v1/models/1"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        api_key = config.get('api_key')
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+
+        response = requests.get(api_url, headers=headers, timeout=10, proxies=config.get_proxies())
         response.raise_for_status()
-        content = response.text
-        
-        cdn_domain = get_image_cdn_domain()
-        matches = re.findall(rf'https://{re.escape(cdn_domain)}/([^/]+)/', content)
-        
-        if matches:
-            # Use the first one found
-            key = matches[0]
-            logger.info(f"Successfully retrieved CDN Key: {key}")
-            _CACHED_CDN_KEY = key
-            return key
-            
-        logger.info("Could not find CDN Key pattern in homepage. Using fallback.")
+        data = response.json()
+
+        # Extract CDN key from the first image URL in the model's version images
+        for version in (data.get('modelVersions') or []):
+            for img in (version.get('images') or []):
+                img_url = img.get('url', '')
+                matches = re.findall(rf'https://{re.escape(cdn_domain)}/([^/]+)/', img_url)
+                if matches:
+                    key = matches[0]
+                    logger.info(f"Successfully retrieved CDN Key via API: {key}")
+                    _CACHED_CDN_KEY = key
+                    return key
+
+        logger.info("Could not find CDN Key in API response. Using fallback.")
     except Exception as e:
-        logger.warning(f"Error retrieving CDN Key: {e}")
+        logger.warning(f"Error retrieving CDN Key via API: {e}")
         
     # Fallback key (the one we know works currently)
     fallback = 'xG1nkqKTMzGDvpLrqFT7WA'
@@ -82,6 +87,53 @@ class CivitaiAPI:
                 'Authorization': 'Bearer ' + self.api_key,
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
+
+    @staticmethod
+    def _decode_devalue(root):
+        """Decode a superjson/devalue serialized array into native Python objects.
+
+        The root array holds all unique values. Index 0 is the root schema.
+        - ``-1`` means undefined (returns None)
+        - Objects are schemas mapping keys to indices
+        - Empty lists are literal empty arrays
+        - Lists starting with a string are type markers (e.g. ``["Date", iso]``)
+        - Other lists contain integer indices to resolve
+        - Primitives are returned as-is
+        """
+        def resolve(index):
+            if index == -1:
+                return None
+            value = root[index]
+            if isinstance(value, dict):
+                return {k: resolve(v) for k, v in value.items()}
+            if isinstance(value, list):
+                if len(value) == 0:
+                    return []
+                # Special type marker: ["Date", "2026-07-21T..."]
+                if isinstance(value[0], str):
+                    return value[1] if len(value) >= 2 else None
+                # Array of indices
+                return [resolve(i) for i in value]
+            return value
+        return resolve(0)
+
+    def _parse_trpc_data(self, result):
+        """Parse TRPC response data, handling both standard and devalue formats.
+
+        Most endpoints return ``result.data`` as a dict with a ``json`` key.
+        The ``image.getInfinite`` endpoint returns ``result.data`` as a
+        superjson devalue string instead.
+        """
+        data = result.get("result", {}).get("data", {})
+        if isinstance(data, dict):
+            return data.get("json")
+        if isinstance(data, str):
+            try:
+                return self._decode_devalue(json.loads(data))
+            except Exception as e:
+                logger.error(f"Failed to decode TRPC devalue response: {e}")
+                return None
+        return data if data else None
     
     def create_collection(self, name, description="", read="Private", write="Private", type="Image", nsfw=False, collection_id=None):
         """Create or update a collection."""
@@ -212,9 +264,13 @@ class CivitaiAPI:
             result = response.json()
             logger.debug(f"Response received: {result.keys()}")
             
-            # Extract the data
-            items = result.get('result', {}).get('data', {}).get('json', {}).get('items', [])
-            next_cursor = result.get('result', {}).get('data', {}).get('json', {}).get('nextCursor')
+            # Extract the data (handles both standard and devalue formats)
+            parsed = self._parse_trpc_data(result)
+            if not parsed or not isinstance(parsed, dict):
+                logger.debug(f"No data returned for collection {collection_id}")
+                return {"items": [], "nextCursor": None}
+            items = parsed.get('items', [])
+            next_cursor = parsed.get('nextCursor')
             
             logger.debug(f"Retrieved {len(items)} items, next cursor: {next_cursor}")
             
@@ -323,9 +379,12 @@ class CivitaiAPI:
             response.raise_for_status()
             result = response.json()
             
-            # Extract the data
-            items = result.get('result', {}).get('data', {}).get('json', {}).get('items', [])
-            next_cursor = result.get('result', {}).get('data', {}).get('json', {}).get('nextCursor')
+            # Extract the data (handles both standard and devalue formats)
+            parsed = self._parse_trpc_data(result)
+            if not parsed or not isinstance(parsed, dict):
+                parsed = {}
+            items = parsed.get('items', [])
+            next_cursor = parsed.get('nextCursor')
             
             logger.debug(f"Retrieved {len(items)} images from post {post_id}")
             
@@ -390,8 +449,12 @@ class CivitaiAPI:
             response.raise_for_status()
             result = response.json()
             
-            items = result.get('result', {}).get('data', {}).get('json', {}).get('items', [])
-            next_cursor = result.get('result', {}).get('data', {}).get('json', {}).get('nextCursor')
+            # Extract the data (handles both standard and devalue formats)
+            parsed = self._parse_trpc_data(result)
+            if not parsed or not isinstance(parsed, dict):
+                parsed = {}
+            items = parsed.get('items', [])
+            next_cursor = parsed.get('nextCursor')
             
             return {
                 "items": items,
@@ -423,121 +486,49 @@ class CivitaiAPI:
         return all_images
 
     def get_my_collections(self):
-        """Get the authenticated user's collections by scraping the collections page."""
-        url = get_site_base_url() + "/collections"
-        logger.info(f"Scraping collections from: {url}")
-        
+        """Get the authenticated user's collections via the official TRPC API.
+
+        Uses the `collection.getAllUser` endpoint, which is a protected query
+        that returns all of the authenticated user's collections. This replaces
+        the previous HTML-scraping approach that broke due to 403 Forbidden
+        bot protection on the /collections page.
+        """
+        logger.info("Fetching user collections via TRPC API (collection.getAllUser)")
+
+        # All fields in getAllUserCollectionsInputSchema are optional, so an
+        # empty json object returns every collection owned/contributed by the
+        # authenticated user.
+        request_data = {"json": {}}
+        encoded_input = quote(json.dumps(request_data, separators=(',', ':')))
+        url = f"{self.BASE_URL}/collection.getAllUser?input={encoded_input}"
+
         try:
-            # Use requests to get the page content
-            # We hope the Authorization header is enough to get the authenticated page, 
-            # or that the user has provided a cookie in the config (not implemented yet).
-            # For now, we try with the API key as Bearer token.
             response = requests.get(url, headers=self.headers, proxies=config.get_proxies())
             response.raise_for_status()
-            
-            # Debug: Write response to file
-            # with open('debug_collections.html', 'w', encoding='utf-8') as f:
-            #     f.write(response.text)
-            # logger.info("Saved response to debug_collections.html")
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Attempt 1: Try to parse __NEXT_DATA__ (JSON Data)
-            next_data = soup.find('script', id='__NEXT_DATA__')
-            if next_data:
-                try:
-                    data = json.loads(next_data.string)
-                    # Try to locate TRPC state which contains query results
-                    trpc_state = data.get('props', {}).get('pageProps', {}).get('trpcState', {})
-                    json_data = trpc_state.get('json', {})
-                    queries = json_data.get('queries', [])
-                    
-                    for query in queries:
-                        # query structure is usually [key, result] or similar, 
-                        # but in dehydrated state it might be different. 
-                        # Let's inspect the 'state' -> 'data'
-                        state = query.get('state', {})
-                        query_data = state.get('data', {})
-                        
-                        # We are looking for a list of items that look like collections
-                        if isinstance(query_data, list) and len(query_data) > 0:
-                            first_item = query_data[0]
-                            # Check if item has collection-like properties
-                            # Relaxed check: 'type' might be missing in some API responses
-                            if isinstance(first_item, dict) and 'id' in first_item and 'name' in first_item:
-                                logger.info(f"Found {len(query_data)} collections via __NEXT_DATA__")
-                                # Ensure 'type' field exists for consistency
-                                for item in query_data:
-                                    if 'type' not in item:
-                                        item['type'] = 'Collection'
-                                return query_data
-                                
-                except Exception as e:
-                    logger.error(f"Failed to parse __NEXT_DATA__: {e}")
+            result = response.json()
 
-            # Attempt 2: Lenient HTML Scraping
-            logger.info("Falling back to HTML scraping...")
-            collections = []
-            seen_ids = set()
-            
-            # Find all links that look like collection links
-            # Format: /collections/{number}
-            links = soup.find_all('a', href=True)
-            
-            for link in links:
-                href = link['href']
-                if '/collections/' in href:
-                    try:
-                        # Extract ID from end of URL
-                        parts = href.rstrip('/').split('/')
-                        collection_id_str = parts[-1]
-                        
-                        # Ensure it's numeric ID
-                        if not collection_id_str.isdigit():
-                            continue
-                            
-                        collection_id = int(collection_id_str)
-                        
-                        if collection_id in seen_ids:
-                            continue
-                        
-                        # Extract name
-                        # Strategy: Try to find a text node that isn't a number (counts)
-                        # Often the structure is <div>Name</div><div>Count</div>
-                        name = link.get_text(strip=True)
-                        
-                        # If name is just a number, it might be the count, skip or look deeper
-                        # But user report suggests "Bookmarked Articles" is visible.
-                        # Let's try to be smart: if text contains newline, split it.
-                        
-                        # Clean up name: remove numbers at the end if they look like counts
-                        # For now, simply use the full text, user can identify it.
-                        
-                        # Filter out very short numeric names which are likely just counts or badges
-                        if name.isdigit() and len(name) < 5:
-                            continue
-                            
-                        collections.append({
-                            "id": collection_id,
-                            "name": name,
-                            "image": None,
-                            "nsfw": False,
-                            "type": "Collection"
-                        })
-                        seen_ids.add(collection_id)
-                        
-                    except ValueError:
-                        continue
-            
-            if collections:
-                logger.info(f"Found {len(collections)} collections via HTML scraping.")
-                return collections
-                
-            logger.warning("No collections found via any method.")
-            return []
-            
+            collections = result.get("result", {}).get("data", {}).get("json", [])
+            if not isinstance(collections, list):
+                collections = []
+
+            if not collections:
+                logger.warning("No collections found.")
+                return []
+
+            # Ensure expected fields exist for UI consistency
+            for item in collections:
+                if 'type' not in item:
+                    item['type'] = 'Collection'
+                if 'image' not in item:
+                    item['image'] = None
+                if 'nsfw' not in item:
+                    item['nsfw'] = False
+
+            logger.info(f"Found {len(collections)} collections via TRPC API.")
+            return collections
+
         except Exception as e:
-            logger.error(f"Error scraping user collections: {e}")
+            logger.error(f"Error fetching user collections: {e}")
             return []
 
     def add_image_to_collection(self, image_id, collection_id):
@@ -668,6 +659,65 @@ class CivitaiAPI:
         except Exception as e:
             logger.error(f"Error fetching tags {image_id}: {e}")
             return []
+
+    def get_model_by_id(self, model_id):
+        """Get model details via REST API: GET /api/v1/models/:modelId."""
+        logger.info(f"Fetching model with ID: {model_id}")
+        url = f"{get_site_base_url()}/api/v1/models/{int(model_id)}"
+        try:
+            response = requests.get(url, headers=self.headers, proxies=config.get_proxies(), timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error fetching model {model_id}: {e}")
+            if 'response' in locals() and response is not None:
+                logger.error(f"Response: {response.text[:500]}")
+            return None
+
+    def get_model_version_by_id(self, version_id):
+        """Get model version details via REST API: GET /api/v1/model-versions/:id."""
+        logger.info(f"Fetching model version with ID: {version_id}")
+        url = f"{get_site_base_url()}/api/v1/model-versions/{int(version_id)}"
+        try:
+            response = requests.get(url, headers=self.headers, proxies=config.get_proxies(), timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error fetching model version {version_id}: {e}")
+            return None
+
+def parse_model_input(value):
+    """Parse model ID or version ID from plain ID / URL.
+
+    Supports:
+    - 12345
+    - https://civitai.com/models/12345
+    - https://civitai.com/models/12345/model-name
+    - https://civitai.com/models/12345?modelVersionId=67890
+    - https://civitai.red/models/12345
+    """
+    if value is None:
+        return None, None
+    text = str(value).strip()
+    if not text:
+        return None, None
+
+    version_id = None
+    model_id = None
+
+    # Query modelVersionId
+    m_ver = re.search(r'[?&]modelVersionId=(\d+)', text, re.IGNORECASE)
+    if m_ver:
+        version_id = int(m_ver.group(1))
+
+    # Path /models/{id}
+    m_model = re.search(r'(?:civitai\.(?:com|red)/)?models/(\d+)', text, re.IGNORECASE)
+    if m_model:
+        model_id = int(m_model.group(1))
+    elif re.fullmatch(r'\d+', text):
+        model_id = int(text)
+
+    return model_id, version_id
 
 def extract_metadata(api, image_data):
     """Extract metadata from image data and related API responses."""

@@ -14,3 +14,7 @@ dist/
 .idea/
 *.log
 config.json
+
+# AI assistant rules
+CLAUDE.md
+.trae/
