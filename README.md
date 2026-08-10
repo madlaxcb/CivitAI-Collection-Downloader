@@ -33,7 +33,7 @@ You can provide feedback by replying to this post.
 ## What's New in v1.4.1
 
 - **Download Crash Fix (Fixed)**: Fixed `'NoneType' object has no attribute 'lower'` when a media item's `mimeType` is `null` in the API response. Such items are now downloaded gracefully instead of aborting the whole batch.
-- **Video Library Packaging (Fixed)**: The Windows build now correctly bundles all `av` (PyAV) submodules and extension modules, so video playback/preview works out of the box.
+- **Video Library Packaging (Fixed)**: Fixed `DLL load failed while importing _core` on startup. The Windows build now correctly bundles all `av` (PyAV) submodules, extension modules, and the FFmpeg DLLs from `av.libs`, so video playback/preview works out of the box.
 
 ## What's New in v1.4
 

@@ -33,7 +33,7 @@ https://civitai.com/articles/24054
 ## v1.4.1 更新内容
 
 - **下载崩溃修复（修复）**：修复 API 返回的媒体 `mimeType` 为 `null` 时出现的 `'NoneType' object has no attribute 'lower'` 错误。此类项目现在能正常下载，不再导致整批中止。
-- **视频库打包修复（修复）**：Windows 构建现在正确打包所有 `av`（PyAV）子模块和扩展模块，视频播放/预览开箱即用。
+- **视频库打包修复（修复）**：修复启动时 `DLL load failed while importing _core` 错误。Windows 构建现在正确打包 `av`（PyAV）的所有子模块、扩展模块以及 `av.libs` 中的 FFmpeg DLL 依赖，视频播放/预览开箱即用。
 
 ## v1.4 更新内容
 
