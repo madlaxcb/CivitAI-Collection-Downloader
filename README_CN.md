@@ -30,6 +30,11 @@ https://civitai.com/articles/24054
 - **便携式**：提供独立的单文件可执行程序，无需安装。
 - **可定制**：可编辑语言文件和配置。
 
+## v1.4.1 更新内容
+
+- **下载崩溃修复（修复）**：修复 API 返回的媒体 `mimeType` 为 `null` 时出现的 `'NoneType' object has no attribute 'lower'` 错误。此类项目现在能正常下载，不再导致整批中止。
+- **视频库打包修复（修复）**：Windows 构建现在正确打包所有 `av`（PyAV）子模块和扩展模块，视频播放/预览开箱即用。
+
 ## v1.4 更新内容
 
 - **收藏集管理（修复）**：用官方 TRPC API（`collection.getAllUser`）替换失效的 HTML 抓取来列出用户收藏集。之前的 403 Forbidden 错误已解决。

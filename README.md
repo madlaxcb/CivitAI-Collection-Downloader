@@ -30,6 +30,11 @@ You can provide feedback by replying to this post.
 - **Portable**: Available as a standalone single-file executable, no installation required.
 - **Customizable**: Editable language files and configuration.
 
+## What's New in v1.4.1
+
+- **Download Crash Fix (Fixed)**: Fixed `'NoneType' object has no attribute 'lower'` when a media item's `mimeType` is `null` in the API response. Such items are now downloaded gracefully instead of aborting the whole batch.
+- **Video Library Packaging (Fixed)**: The Windows build now correctly bundles all `av` (PyAV) submodules and extension modules, so video playback/preview works out of the box.
+
 ## What's New in v1.4
 
 - **Collection Management (Fixed)**: Replaced broken HTML scraping with the official TRPC API (`collection.getAllUser`) for listing user collections. Previous 403 Forbidden errors are resolved.

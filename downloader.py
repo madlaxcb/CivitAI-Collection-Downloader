@@ -26,6 +26,8 @@ mimetypes.add_type('video/mp4', '.mp4')
 
 def get_file_extension(mime_type):
     """Get the appropriate file extension for a MIME type."""
+    if not mime_type:
+        return ''
     # Special case handling for common types
     mime_to_ext = {
         'image/jpeg': '.jpg',
@@ -217,7 +219,7 @@ def download_media(media_data, download_dir, api_key=None):
     media_id = media_data.get("id")
     media_name = media_data.get("name") or f"media-{media_id}"
     media_url = media_data.get("url")
-    mime_type = media_data.get("mimeType", "image/jpeg")
+    mime_type = media_data.get("mimeType") or "image/jpeg"
 
     if not media_url:
         logger.error(f"No URL found for media {media_id}")
