@@ -3,6 +3,7 @@ import sys
 import json
 import time
 import logging
+import threading
 import requests
 import mimetypes
 import shutil
@@ -458,6 +459,202 @@ def download_model_file(url, dest_path, api_key=None, progress_callback=None, ex
             time.sleep(2 ** attempt)
 
     return None
+
+
+def _probe_range_support(url, headers, proxies):
+    """Send Range:bytes=0-0 to detect server Range support and total size.
+
+    Returns (supported: bool, total_size: int|None, final_url: str).
+    A 206 response with Content-Range proves Range support.
+    """
+    probe_headers = dict(headers)
+    probe_headers['Range'] = 'bytes=0-0'
+    try:
+        with requests.get(url, headers=probe_headers, proxies=proxies,
+                          stream=True, timeout=30, allow_redirects=True) as resp:
+            if resp.status_code == 206:
+                total = _parse_content_range_total(resp.headers.get('Content-Range'))
+                return True, total, resp.url
+            cl = resp.headers.get('Content-Length')
+            total = int(cl) if cl else None
+            return False, total, resp.url
+    except requests.RequestException:
+        return False, None, url
+
+
+def download_model_file_multithreaded(url, dest_path, api_key=None, num_threads=4,
+                                      progress_callback=None, expected_size=None,
+                                      stop_check=None):
+    """Download a model file using multiple concurrent HTTP Range connections.
+
+    Falls back to single-threaded ``download_model_file`` when the server does
+    not support Range requests, when total size is unknown, or when
+    ``num_threads <= 1``.  Supports resume across runs via per-chunk .part files.
+    """
+    dest_path = Path(dest_path)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Already complete?
+    if dest_path.exists() and dest_path.stat().st_size > 0:
+        if expected_size and dest_path.stat().st_size < expected_size * 0.99:
+            dest_path.unlink()
+        else:
+            logger.info(f"Model file already exists: {dest_path}")
+            return dest_path
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept-Encoding': 'identity',
+    }
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+    proxies = config.get_proxies()
+
+    # Probe server Range support and total size
+    supported, total, final_url = _probe_range_support(url, headers, proxies)
+    if not final_url:
+        final_url = url
+
+    if total is None and expected_size:
+        total = int(expected_size)
+
+    if not supported or not total or total <= 0:
+        logger.info("Server does not support Range; falling back to single-thread download")
+        return download_model_file(url, dest_path, api_key=api_key,
+                                   progress_callback=progress_callback,
+                                   expected_size=expected_size)
+
+    if num_threads <= 1:
+        return download_model_file(url, dest_path, api_key=api_key,
+                                   progress_callback=progress_callback,
+                                   expected_size=expected_size)
+
+    logger.info(f"Starting multi-threaded download ({num_threads} threads, {total/1024/1024:.1f} MB)")
+
+    # Disk space check (account for existing parts)
+    parts_dir = dest_path.parent / f".{dest_path.name}.mtparts"
+    existing_parts = 0
+    if parts_dir.exists():
+        existing_parts = sum(
+            (parts_dir / f"chunk_{i}").stat().st_size
+            for i in range(num_threads)
+            if (parts_dir / f"chunk_{i}").exists()
+        )
+    remaining = max(0, total - existing_parts)
+    ok, free, needed = check_disk_space(dest_path.parent, remaining)
+    if not ok:
+        logger.error(
+            f"Insufficient disk space for {dest_path.name}: "
+            f"need ~{needed/1024/1024:.1f} MB free, have {free/1024/1024:.1f} MB"
+        )
+        return None
+
+    parts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Compute chunk byte boundaries [start, end] for each thread
+    base_chunk = total // num_threads
+    ranges = []
+    for i in range(num_threads):
+        start = i * base_chunk
+        end = total - 1 if i == num_threads - 1 else (start + base_chunk - 1)
+        ranges.append((start, end))
+
+    progress = [0] * num_threads
+    lock = threading.Lock()
+    stop_flag = {'stop': False}
+
+    def report():
+        if progress_callback:
+            with lock:
+                done = sum(progress)
+            progress_callback(done, total)
+
+    def download_chunk(idx, start, end):
+        chunk_file = parts_dir / f"chunk_{idx}"
+        chunk_size = end - start + 1
+        resume = chunk_file.stat().st_size if chunk_file.exists() else 0
+        with lock:
+            progress[idx] = min(resume, chunk_size)
+
+        if resume >= chunk_size:
+            report()
+            return
+
+        cur_start = start + resume
+        chunk_headers = dict(headers)
+        chunk_headers['Range'] = f'bytes={cur_start}-{end}'
+
+        max_retries = config.get('max_retries', 3)
+        for attempt in range(max_retries):
+            if stop_flag['stop'] or (stop_check and stop_check()):
+                stop_flag['stop'] = True
+                return
+            try:
+                with requests.get(final_url, headers=chunk_headers, proxies=proxies,
+                                  stream=True, timeout=60, allow_redirects=True) as resp:
+                    if resp.status_code not in (206, 200):
+                        resp.raise_for_status()
+                    mode = 'ab' if resume > 0 and resp.status_code == 206 else 'wb'
+                    if mode == 'wb':
+                        resume = 0
+                        with lock:
+                            progress[idx] = 0
+                    with open(chunk_file, mode) as f:
+                        for data in resp.iter_content(chunk_size=1024 * 1024):
+                            if stop_flag['stop'] or (stop_check and stop_check()):
+                                stop_flag['stop'] = True
+                                return
+                            if not data:
+                                continue
+                            f.write(data)
+                            with lock:
+                                progress[idx] += len(data)
+                            report()
+                return  # chunk complete
+            except Exception as e:
+                logger.error(f"Chunk {idx} attempt {attempt+1}/{max_retries} failed: {e}")
+                if attempt == max_retries - 1:
+                    return
+                time.sleep(2 ** attempt)
+                resume = chunk_file.stat().st_size if chunk_file.exists() else 0
+                cur_start = start + resume
+                chunk_headers['Range'] = f'bytes={cur_start}-{end}'
+
+    threads = []
+    for idx, (s, e) in enumerate(ranges):
+        t = threading.Thread(target=download_chunk, args=(idx, s, e), daemon=True)
+        threads.append(t)
+        t.start()
+    for t in threads:
+        t.join()
+
+    if stop_flag['stop']:
+        logger.info(f"Download stopped, partial chunks kept for resume: {dest_path.name}")
+        return None
+
+    # Verify all chunks exist
+    for idx in range(num_threads):
+        if not (parts_dir / f"chunk_{idx}").exists():
+            logger.error(f"Chunk {idx} missing, download incomplete")
+            return None
+
+    # Merge chunks into final file
+    logger.info(f"Merging {num_threads} chunks into {dest_path.name}")
+    with open(dest_path, 'wb') as out:
+        for idx in range(num_threads):
+            with open(parts_dir / f"chunk_{idx}", 'rb') as inf:
+                shutil.copyfileobj(inf, out)
+
+    shutil.rmtree(parts_dir, ignore_errors=True)
+
+    final_size = dest_path.stat().st_size
+    if total and final_size < total:
+        logger.error(f"Incomplete merge: got {final_size}, expected {total}")
+        return None
+
+    logger.info(f"Downloaded model file ({num_threads} threads): {dest_path} ({final_size} bytes)")
+    return dest_path
+
 
 def download_model_image(url, dest_path, api_key=None):
     """Download a model example/preview image."""

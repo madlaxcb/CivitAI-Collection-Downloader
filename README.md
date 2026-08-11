@@ -15,7 +15,7 @@ You can provide feedback by replying to this post.
 
 ## Features
 
-- **Multi-threaded Downloading**: Fast downloads with concurrent connections.
+- **Multi-threaded Model Download**: Model files are downloaded using multiple concurrent HTTP Range connections (configurable 1-8 threads) for faster speeds. Falls back to single-thread automatically if the server does not support Range requests.
 - **Resume Capability**: Skips already downloaded files to save time and bandwidth. Model downloads support HTTP Range-based resume after interruption.
 - **Disk Space Check**: Verifies free disk space before downloading model files to prevent partial downloads and disk-full errors.
 - **Smart Filtering**: Options to download images, videos, or both.
@@ -29,6 +29,10 @@ You can provide feedback by replying to this post.
     - **Efficient Previews**: Uses lightweight WebP previews in the UI to reduce memory usage and prevent crashes.
 - **Portable**: Available as a standalone single-file executable, no installation required.
 - **Customizable**: Editable language files and configuration.
+
+## What's New in v1.4.2
+
+- **Multi-threaded Model Download**: Model files now download using multiple concurrent HTTP Range connections (configurable 1-8 threads, default 4) for significantly faster speeds. Each thread downloads a separate chunk; chunks are merged on completion. Automatically falls back to single-thread if the server does not support Range requests. Resume and disk space checks are preserved.
 
 ## What's New in v1.4.1
 
@@ -89,6 +93,7 @@ You can provide feedback by replying to this post.
     *   `Collection`: Download a specific collection (e.g., `https://civitai.com/collections/12345`).
     *   `Post`: Download images/videos from a specific post.
     *   `User`: Download all images posted by a specific user.
+    *   `Model`: Download model files, example images, and metadata by model ID or URL (e.g., `https://civitai.com/models/12345`). Supports multi-threaded download and version selection.
 2.  **Enter ID**:
     *   For URL `https://civitai.com/collections/12345`, the ID is `12345`.
     *   For URL `https://civitai.com/user/username`, the ID is `username`.
@@ -102,7 +107,7 @@ You can provide feedback by replying to this post.
 If you wish to run the code from source or contribute:
 
 ### Prerequisites
-- Python 3.11 or higher
+- Python 3.9 or higher
 - Windows 10/11 (Recommended)
 
 ### Setup
@@ -117,13 +122,24 @@ If you wish to run the code from source or contribute:
     ```
 
 ### Building from Source
+
+The project includes a PyInstaller spec file (`CivitAI_Downloader.spec`) that handles bundling all dependencies, including PyAV's FFmpeg DLLs from `av.libs`.
+
+**On Windows:**
 ```bash
+pip install -r requirements.txt
 pip install pyinstaller
-pyinstaller --name "CivitAI_Downloader" --windowed --onefile --add-data "locales;locales" --add-data "user_agreement.py;." main.py
+pyinstaller CivitAI_Downloader.spec --noconfirm --clean
+```
+
+**Cross-compiling on Linux (via Docker + Wine):**
+```bash
+docker run --rm -w /src -v $(pwd):/src tobix/pywine:3.9 \
+  sh -c "wine pip install -r requirements.txt && wine python -m PyInstaller CivitAI_Downloader.spec --noconfirm --clean"
 ```
 
 ### Note on `tkVideoPlayer`
-This project uses a patched version of `tkVideoPlayer` to ensure compatibility with newer versions of the `av` library (v16.0.0+). The patched library is included as `tkVideoPlayer.py` in this repository. The `requirements.txt` excludes it to prioritize the local patched version.
+This project uses a patched version of `tkVideoPlayer` to ensure compatibility with newer versions of the `av` library (v15.0.0+). The patched library is included as `tkVideoPlayer.py` in this repository. The `requirements.txt` excludes it to prioritize the local patched version.
 
 ## License
 

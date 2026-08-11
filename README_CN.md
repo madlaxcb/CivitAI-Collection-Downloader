@@ -15,7 +15,7 @@ https://civitai.com/articles/24054
 
 ## 功能特性
 
-- **多线程下载**：支持并发连接，实现高速下载。
+- **多线程模型下载**：模型文件使用多个并发 HTTP Range 连接下载（可配置 1-8 线程，默认 4 线程），大幅提升下载速度。各线程下载独立分块，完成后合并。服务器不支持 Range 时自动回退为单线程。
 - **断点续传**：自动跳过已下载的文件，节省时间和带宽。模型下载支持基于 HTTP Range 的断点续传。
 - **磁盘空间校验**：下载模型文件前校验剩余磁盘空间，避免磁盘空间不足导致下载失败。
 - **智能过滤**：可选择下载图片、视频或两者都下载。
@@ -29,6 +29,10 @@ https://civitai.com/articles/24054
     - **高效的预览**：在 UI 中使用轻量级的 WebP 预览图，减少内存占用并防止程序崩溃。
 - **便携式**：提供独立的单文件可执行程序，无需安装。
 - **可定制**：可编辑语言文件和配置。
+
+## v1.4.2 更新内容
+
+- **多线程模型下载**：模型文件现在使用多个并发 HTTP Range 连接下载（可配置 1-8 线程，默认 4 线程），大幅提升速度。每个线程下载独立分块，完成后合并。服务器不支持 Range 时自动回退单线程。断点续传和磁盘空间校验保留。
 
 ## v1.4.1 更新内容
 
@@ -89,6 +93,7 @@ https://civitai.com/articles/24054
     *   `Collection`（收藏夹）：下载特定收藏夹（例如 `https://civitai.com/collections/12345`）。
     *   `Post`（帖子）：下载特定帖子中的图片/视频。
     *   `User`（用户）：下载特定用户发布的所有图片。
+    *   `Model`（模型）：通过模型 ID 或 URL 下载模型文件、示例图和元数据（例如 `https://civitai.com/models/12345`）。支持多线程下载和版本选择。
 2.  **输入 ID**：
     *   对于 URL `https://civitai.com/collections/12345`，ID 为 `12345`。
     *   对于 URL `https://civitai.com/user/username`，ID 为 `username`。
@@ -102,7 +107,7 @@ https://civitai.com/articles/24054
 如果您希望从源码运行代码或参与贡献：
 
 ### 前提条件
-- Python 3.11 或更高版本
+- Python 3.9 或更高版本
 - Windows 10/11（推荐）
 
 ### 设置
@@ -117,13 +122,24 @@ https://civitai.com/articles/24054
     ```
 
 ### 从源码构建
+
+项目包含 PyInstaller spec 文件（`CivitAI_Downloader.spec`），自动处理所有依赖的打包，包括 PyAV 的 `av.libs` 中的 FFmpeg DLL。
+
+**在 Windows 上：**
 ```bash
+pip install -r requirements.txt
 pip install pyinstaller
-pyinstaller --name "CivitAI_Downloader" --windowed --onefile --add-data "locales;locales" --add-data "user_agreement.py;." main.py
+pyinstaller CivitAI_Downloader.spec --noconfirm --clean
+```
+
+**在 Linux 上交叉编译（通过 Docker + Wine）：**
+```bash
+docker run --rm -w /src -v $(pwd):/src tobix/pywine:3.9 \
+  sh -c "wine pip install -r requirements.txt && wine python -m PyInstaller CivitAI_Downloader.spec --noconfirm --clean"
 ```
 
 ### 关于 `tkVideoPlayer` 的说明
-本项目使用 `tkVideoPlayer` 的修补版本，以确保与较新版本的 `av` 库 (v16.0.0+) 兼容。修补后的库以 `tkVideoPlayer.py` 文件的形式包含在此仓库中。`requirements.txt` 中已将其排除，以优先使用本地修补版本。
+本项目使用 `tkVideoPlayer` 的修补版本，以确保与较新版本的 `av` 库 (v15.0.0+) 兼容。修补后的库以 `tkVideoPlayer.py` 文件的形式包含在此仓库中。`requirements.txt` 中已将其排除，以优先使用本地修补版本。
 
 ## 许可证
 

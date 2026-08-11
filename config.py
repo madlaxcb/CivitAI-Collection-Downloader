@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     'show_thumbnails': False,
     'cache_dir': os.path.join(os.path.expanduser('~'), '.civitai_downloader', 'cache'),
     'max_cache_size': 500,  # MB
+    'model_download_threads': 4,
     'site_domain': 'civitai.com',
 }
 

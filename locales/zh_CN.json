@@ -1,5 +1,5 @@
 {
-    "app_title": "CivitAI 合集下载器 v1.4.1",
+    "app_title": "CivitAI 合集下载器 v1.4.2",
     "tabs": {
         "manager": "管理",
         "settings": "设置",
@@ -93,6 +93,7 @@
         "model_images": "下载示例图",
         "model_version": "模型版本:",
         "model_fetch_versions": "获取版本列表",
+        "model_threads": "下载线程数:",
         "model_fetching": "正在获取模型信息...",
         "model_versions_loaded": "已加载 {count} 个版本",
         "model_no_versions": "模型 {id} 没有可用版本",

@@ -28,6 +28,7 @@ from downloader import (
     sanitize_filename,
     create_model_directory,
     download_model_file,
+    download_model_file_multithreaded,
     download_model_image,
 )
 from cache import cache_manager
@@ -1302,6 +1303,20 @@ class CivitAIDownloaderGUI:
         )
         self.model_fetch_btn.grid(row=2, column=0, sticky=tk.W, padx=5, pady=(8, 0))
         self._model_versions = []
+
+        # Download threads setting (shown only for model task type)
+        ttk.Label(self.model_options_frame, text=i18n.get("download.model_threads")).grid(
+            row=3, column=0, sticky=tk.W, padx=5, pady=(8, 0)
+        )
+        self.model_threads_var = tk.IntVar(
+            value=config.get('model_download_threads', 4)
+        )
+        ttk.Spinbox(
+            self.model_options_frame,
+            from_=1, to=8,
+            textvariable=self.model_threads_var,
+            width=5
+        ).grid(row=3, column=1, sticky=tk.W, padx=5, pady=(8, 0))
         
         # Options
         options_frame = ttk.LabelFrame(download_frame, text=i18n.get("download.options"), padding="5")
@@ -1357,7 +1372,7 @@ class CivitAIDownloaderGUI:
         title_label.pack(pady=(0, 10))
         
         # Version
-        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.4.1"), font=('', 12))
+        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.4.2"), font=('', 12))
         version_label.pack(pady=(0, 20))
         
         # Links
@@ -1980,7 +1995,12 @@ class CivitAIDownloaderGUI:
 
                 logger.info(i18n.get("download.model_downloading_file", name=file_name, size=size_info))
                 expected_bytes = int(size_kb * 1024) if size_kb else None
-                result = download_model_file(download_url, dest, api_key=api_key, progress_callback=on_progress, expected_size=expected_bytes)
+                num_threads = max(1, min(8, self.model_threads_var.get()))
+                result = download_model_file_multithreaded(
+                    download_url, dest, api_key=api_key, num_threads=num_threads,
+                    progress_callback=on_progress, expected_size=expected_bytes,
+                    stop_check=lambda: self.stop_requested,
+                )
                 if not result:
                     logger.error(i18n.get("download.model_file_failed", name=file_name))
                     return False
