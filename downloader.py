@@ -202,6 +202,19 @@ def download_file(url, output_path, mime_type=None, max_retries=3, api_key=None,
             return True
 
         except (requests.RequestException, OSError) as e:
+            if (
+                'response' in locals()
+                and getattr(response, 'status_code', None) == 503
+                and mime_type
+                and mime_type.startswith('video')
+                and '/width=' in url
+            ):
+                fallback_url = url.rsplit('/width=', 1)[0] + '/original=true'
+                if fallback_url != url:
+                    logger.warning(
+                        f"Video CDN returned 503 for resized URL; retrying original video URL: {fallback_url}"
+                    )
+                    url = fallback_url
             logger.error(f"Error downloading file (attempt {attempt+1}/{max_retries+1}): {e}")
             if 'response' in locals():
                 logger.debug(f"Response headers: {dict(response.headers) if hasattr(response, 'headers') else 'No headers'}")
