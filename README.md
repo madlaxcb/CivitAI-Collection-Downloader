@@ -30,6 +30,10 @@ You can provide feedback by replying to this post.
 - **Portable**: Available as a standalone single-file executable, no installation required.
 - **Customizable**: Editable language files and configuration.
 
+## What's New in v1.4.3
+
+- **Video CDN 503 Fallback**: When a resized video URL returns `503 Service Unavailable`, the downloader automatically retries using the original video URL instead of repeatedly requesting the unavailable resized URL.
+
 ## What's New in v1.4.2
 
 - **Multi-threaded Model Download**: Model files now download using multiple concurrent HTTP Range connections (configurable 1-8 threads, default 4) for significantly faster speeds. Each thread downloads a separate chunk; chunks are merged on completion. Automatically falls back to single-thread if the server does not support Range requests. Resume and disk space checks are preserved.
