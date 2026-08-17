@@ -1372,7 +1372,7 @@ class CivitAIDownloaderGUI:
         title_label.pack(pady=(0, 10))
         
         # Version
-        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.4.4"), font=('', 12))
+        version_label = ttk.Label(about_frame, text=i18n.get("about.version_label", version="1.4.5"), font=('', 12))
         version_label.pack(pady=(0, 20))
         
         # Links

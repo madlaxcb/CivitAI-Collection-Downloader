@@ -30,6 +30,11 @@ You can provide feedback by replying to this post.
 - **Portable**: Available as a standalone single-file executable, no installation required.
 - **Customizable**: Editable language files and configuration.
 
+## What's New in v1.4.5
+
+- **Safer Range Downloads**: Model downloads now require a `206 Partial Content` response for each ranged chunk. Servers that ignore Range and return `200 OK`, as well as servers that reject Range with `400 Bad Request`, automatically fall back to the single-threaded downloader to prevent corrupted files.
+- **Release Cleanup**: Removed local build, distribution, Python cache, and temporary download artifacts before rebuilding the release. These generated files remain excluded from source control.
+
 ## What's New in v1.4.4
 
 - **Model Download Range Fallback**: Fixed model downloads failing with `400 Bad Request` on Cloudflare R2 / S3 pre-signed URLs. When the server rejects Range requests (400), the downloader now automatically falls back to single-threaded download instead of failing.

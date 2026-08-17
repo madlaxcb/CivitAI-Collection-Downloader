@@ -606,22 +606,14 @@ def download_model_file_multithreaded(url, dest_path, api_key=None, num_threads=
             try:
                 with requests.get(final_url, headers=chunk_headers, proxies=proxies,
                                   stream=True, timeout=60, allow_redirects=True) as resp:
-                    if resp.status_code not in (206, 200):
-                        # Cloudflare R2 / S3 pre-signed URLs reject Range requests
-                        # with 400 (signature only covers the host header). Fall back
-                        # to single-threaded download in that case.
-                        if resp.status_code == 400:
+                    if resp.status_code != 206:
+                        if resp.status_code in (200, 400):
                             with lock:
                                 range_rejected['value'] = True
                             stop_flag['stop'] = True
                             return
                         resp.raise_for_status()
-                    mode = 'ab' if resume > 0 and resp.status_code == 206 else 'wb'
-                    if mode == 'wb':
-                        resume = 0
-                        with lock:
-                            progress[idx] = 0
-                    with open(chunk_file, mode) as f:
+                    with open(chunk_file, 'ab' if resume > 0 else 'wb') as f:
                         for data in resp.iter_content(chunk_size=1024 * 1024):
                             if stop_flag['stop'] or (stop_check and stop_check()):
                                 stop_flag['stop'] = True
@@ -650,9 +642,6 @@ def download_model_file_multithreaded(url, dest_path, api_key=None, num_threads=
     for t in threads:
         t.join()
 
-    # Cloudflare R2 / S3 pre-signed URLs reject Range requests with 400.
-    # Fall back to the single-threaded downloader, which handles these URLs
-    # correctly (no Range header on a fresh download).
     if range_rejected['value']:
         logger.warning(
             f"Server rejected Range requests (400) for {dest_path.name}; "
