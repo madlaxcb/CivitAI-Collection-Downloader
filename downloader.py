@@ -575,6 +575,7 @@ def download_model_file_multithreaded(url, dest_path, api_key=None, num_threads=
     progress = [0] * num_threads
     lock = threading.Lock()
     stop_flag = {'stop': False}
+    range_rejected = {'value': False}
 
     def report():
         if progress_callback:
@@ -606,6 +607,14 @@ def download_model_file_multithreaded(url, dest_path, api_key=None, num_threads=
                 with requests.get(final_url, headers=chunk_headers, proxies=proxies,
                                   stream=True, timeout=60, allow_redirects=True) as resp:
                     if resp.status_code not in (206, 200):
+                        # Cloudflare R2 / S3 pre-signed URLs reject Range requests
+                        # with 400 (signature only covers the host header). Fall back
+                        # to single-threaded download in that case.
+                        if resp.status_code == 400:
+                            with lock:
+                                range_rejected['value'] = True
+                            stop_flag['stop'] = True
+                            return
                         resp.raise_for_status()
                     mode = 'ab' if resume > 0 and resp.status_code == 206 else 'wb'
                     if mode == 'wb':
@@ -640,6 +649,19 @@ def download_model_file_multithreaded(url, dest_path, api_key=None, num_threads=
         t.start()
     for t in threads:
         t.join()
+
+    # Cloudflare R2 / S3 pre-signed URLs reject Range requests with 400.
+    # Fall back to the single-threaded downloader, which handles these URLs
+    # correctly (no Range header on a fresh download).
+    if range_rejected['value']:
+        logger.warning(
+            f"Server rejected Range requests (400) for {dest_path.name}; "
+            "falling back to single-threaded download"
+        )
+        shutil.rmtree(parts_dir, ignore_errors=True)
+        return download_model_file(url, dest_path, api_key=api_key,
+                                   progress_callback=progress_callback,
+                                   expected_size=expected_size)
 
     if stop_flag['stop']:
         logger.info(f"Download stopped, partial chunks kept for resume: {dest_path.name}")

@@ -30,6 +30,10 @@ You can provide feedback by replying to this post.
 - **Portable**: Available as a standalone single-file executable, no installation required.
 - **Customizable**: Editable language files and configuration.
 
+## What's New in v1.4.4
+
+- **Model Download Range Fallback**: Fixed model downloads failing with `400 Bad Request` on Cloudflare R2 / S3 pre-signed URLs. When the server rejects Range requests (400), the downloader now automatically falls back to single-threaded download instead of failing.
+
 ## What's New in v1.4.3
 
 - **Video CDN 503 Fallback**: When a resized video URL returns `503 Service Unavailable`, the downloader automatically retries using the original video URL instead of repeatedly requesting the unavailable resized URL.
